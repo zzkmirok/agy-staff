@@ -6,7 +6,7 @@
 
 <p align="center"><a href="https://claude.com/claude-code"><img src="assets/badges/claude-code-plugin.svg" height="20" alt="Claude Code plugin"></a> <a href="https://developers.openai.com/codex/"><img src="assets/badges/codex-plugin.svg" height="20" alt="Codex plugin"></a> <a href="LICENSE"><img src="assets/badges/license-mit.svg" height="20" alt="license: MIT"></a></p>
 
-把 Google 的 Antigravity CLI（`agy`）雇来当 **Claude Code** 和 **OpenAI Codex** 的「agy 员工」。
+把 Google 的 Antigravity CLI（`agy`）雇来当 **Claude Code**、**OpenAI Codex** 和 **GitHub Copilot**（VS Code）的「agy 员工」。
 
 ![agy-staff 设计图](assets/design.png)
 
@@ -56,6 +56,34 @@ codex plugin add agy@agy-staff
 > **没有必须先做的 setup 步骤。** `staffer`、`researcher`、`reviewer`、`implementer` 默认以 **unrestricted** 档运行：agy 自己收集证据、自己改文件。护栏有两层：prompt 模板（不 commit/push、不做花钱或不可逆的操作），加上 `implementer` 启动前的 git 工作区干净检查。
 > `setup` + `--restricted` 是**可选的加固手段**，处理不可信输入时才需要——既可按次传 `--restricted`，也可用 `setup --restrict review,research` 设为本仓库默认。`setup` 会先 dry run，经你确认才写入（对 agent 说「set up agy」即可触发）；用之前请读[权限说明](docs/REFERENCE.zh-CN.md#可选加固-setup)——allowlist 按前缀匹配、对整台机器生效，restricted 档运行返回的内容也可能比 unrestricted 少。
 
+#### GitHub Copilot（VS Code）
+
+Copilot 没有 marketplace，也没有插件机制——skill 就是它从磁盘上读的普通目录，所以这里用脚本从 checkout 里拷出去：
+
+```bash
+git clone https://github.com/keli-wen/agy-staff.git
+cd agy-staff
+./scripts/install-copilot.sh             # 账号级：~/.copilot/skills/
+./scripts/install-copilot.sh --project   # 或按项目：<项目>/.github/skills/
+```
+
+Windows：`powershell -ExecutionPolicy Bypass -File .\scripts\install-copilot.ps1`（选项相同，写作 `-Project`）。
+
+脚本会先检查 `agy` 和 `node`，再拷贝 `skills/*`，并且只改拷贝出去的副本：companion 路径换成绝对路径（仓库内那个相对路径一拷出去就断），每个 skill 都加上命名空间，所以命令是 `/agy-ask`、`/agy-staffer`、`/agy-researcher`、`/agy-reviewer`、`/agy-implementer`。`skills/` 下的源文件不会被改动；重跑脚本是覆盖已装的副本，不会报错。
+
+分两步验证——先在终端里跑，这样能把 agy 或登录的问题和 Copilot 的问题分开：
+
+```bash
+node /path/to/agy-staff/companion/agy-companion.mjs ask "reply with OK"
+```
+
+然后重启 VS Code，在 Copilot Chat 里运行 `/agy-ask reply with OK`。
+
+> [!IMPORTANT]
+> - **必须切 Agent 模式。** Ask 和 Edit 模式下 skill 不会加载——先把 Chat 的模式选择器切到 **Agent**。
+> - **后台 job 意味着反复批准。** Copilot 每执行一条终端命令都要你点同意，所以一个 job 至少两次：一次起 job，一次收结果的 `wait`。只有 `/agy-ask` 是单次前台调用。
+> - **升级要手动**：在 checkout 里 `git pull`，然后重跑脚本。没有 `plugin update` 之类的等价命令。
+
 #### 给 Agent
 
 把下面这段话直接粘贴给任何 coding agent：
@@ -77,6 +105,8 @@ claude plugin marketplace update agy-staff && claude plugin update agy@agy-staff
 ```bash
 codex plugin marketplace upgrade && codex plugin add agy@agy-staff  # then restart Codex
 ```
+
+Copilot 装的同样是拷贝，只是靠脚本：在你的 checkout 里 `git pull`，然后重跑 `scripts/install-copilot.sh`（或那个 `.ps1`）。
 
 两个 harness 都按版本号目录缓存插件，只有插件版本号变了升级才会落地，之后还要重启 harness。改动没出现时见[升级](docs/REFERENCE.zh-CN.md#升级)——那里有强制刷新的命令。
 

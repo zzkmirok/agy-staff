@@ -6,7 +6,7 @@
 
 <p align="center"><a href="https://claude.com/claude-code"><img src="assets/badges/claude-code-plugin.svg" height="20" alt="Claude Code plugin"></a> <a href="https://developers.openai.com/codex/"><img src="assets/badges/codex-plugin.svg" height="20" alt="Codex plugin"></a> <a href="LICENSE"><img src="assets/badges/license-mit.svg" height="20" alt="license: MIT"></a></p>
 
-Hire Google's Antigravity CLI (`agy`) as a staffer for **Claude Code** and **OpenAI Codex**.
+Hire Google's Antigravity CLI (`agy`) as a staffer for **Claude Code**, **OpenAI Codex** and **GitHub Copilot** (VS Code).
 
 ![agy-staff design](assets/design.png)
 
@@ -56,6 +56,34 @@ Restart the harness afterwards so the skills load, then first run: `/agy:ask "re
 > **There is no mandatory setup step.** `staffer`, `researcher`, `reviewer` and `implementer` run **unrestricted** by default: agy gathers evidence and edits files on its own, guarded by the prompt templates (no commits/pushes, no costly side effects) plus a clean-git-tree check on `implementer`.
 > `setup` + `--restricted` is **optional hardening** for untrusted input — per run (`--restricted`) or as a per-repo default (`setup --restrict review,research`). `setup` dry-runs and asks before writing anything ("set up agy" triggers it); read the [permission notes](docs/REFERENCE.md#optional-hardening-setup) first — the allowlist is prefix-matched, applies machine-wide, and a restricted run can return less than an unrestricted one.
 
+#### GitHub Copilot (VS Code)
+
+Copilot has no marketplace or plugin mechanism — skills are plain directories it reads off disk — so a script copies them out of a checkout instead:
+
+```bash
+git clone https://github.com/keli-wen/agy-staff.git
+cd agy-staff
+./scripts/install-copilot.sh             # account-wide: ~/.copilot/skills/
+./scripts/install-copilot.sh --project   # or per project: <project>/.github/skills/
+```
+
+On Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\install-copilot.ps1` (same options, spelled `-Project`).
+
+The script checks for `agy` and `node`, copies `skills/*`, and rewrites the copies only: the companion path becomes absolute (the in-repo relative one breaks the moment a skill is copied out), and every skill is namespaced, so the commands are `/agy-ask`, `/agy-staffer`, `/agy-researcher`, `/agy-reviewer`, `/agy-implementer`. The sources under `skills/` are never modified; re-running the script overwrites the installed copies.
+
+Verify in two steps — first in a terminal, which isolates an agy or auth problem from a Copilot one:
+
+```bash
+node /path/to/agy-staff/companion/agy-companion.mjs ask "reply with OK"
+```
+
+then restart VS Code and run `/agy-ask reply with OK` in Copilot Chat.
+
+> [!IMPORTANT]
+> - **Agent mode is required.** Skills do not load in Ask or Edit mode — switch the Chat mode picker to **Agent** first.
+> - **Background jobs mean repeated approvals.** Copilot asks before each terminal command, so one job costs at least two: one to start it, one for the `wait` that collects the result. Only `/agy-ask` is a single foreground call.
+> - **Upgrading is manual**: `git pull` in the checkout, then re-run the script. There is no `plugin update` equivalent.
+
 #### For agents
 
 Paste this into any coding agent:
@@ -77,6 +105,8 @@ claude plugin marketplace update agy-staff && claude plugin update agy@agy-staff
 ```bash
 codex plugin marketplace upgrade && codex plugin add agy@agy-staff  # then restart Codex
 ```
+
+Copilot installs a copy too, but by script: `git pull` in your checkout, then re-run `scripts/install-copilot.sh` (or the `.ps1`).
 
 Both harnesses cache per version directory, so an upgrade lands only if the plugin version changed; restart the harness afterwards. If a fix does not show up, see [upgrading](docs/REFERENCE.md#upgrading) — it has the force-refresh command.
 

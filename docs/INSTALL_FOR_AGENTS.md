@@ -16,9 +16,10 @@ You normally know which product you are. If unsure, check:
 
 - **Claude Code** — you have `/plugin` slash commands, project instructions arrive via `CLAUDE.md`, and your Bash tool typically has `CLAUDECODE=1` in the environment. → Follow section 2a.
 - **Codex** — you invoke skills with `$name` syntax, follow `AGENTS.md`, and plugins are managed through the `codex` CLI. → Follow section 2b.
-- **Anything else** — this plugin only ships Claude Code and Codex skills. Say so and stop.
+- **GitHub Copilot in VS Code** — you are running as Copilot's agent inside a VS Code workspace, there is no `claude` or `codex` CLI on PATH, and skills are read from `~/.copilot/skills/` or `.github/skills/`. → Follow section 2c.
+- **Anything else** — this plugin ships skills for Claude Code, Codex and Copilot. If your harness reads `SKILL.md` directories from disk it will probably work like Copilot does (section 2c); if it does not, say so and stop.
 
-Follow exactly one of the two sections below.
+Follow exactly one of the three sections below.
 
 ## 2a. Claude Code — install / upgrade
 
@@ -59,12 +60,41 @@ Then the user must restart the app — Codex caches plugins per version. Upgrade
 > [!IMPORTANT]
 > Codex's command sandbox cannot run agy. agy binds a localhost port for its internal language server and reads its OAuth token file; the workspace-write sandbox blocks the bind and hides the token (secret protection — no `writable_roots`/`network_access` config opens it). Every companion command must run **unsandboxed**: the workspace needs full access, or each companion command needs escalated approval. The failure signature is `operation not permitted` on `~/.gemini/antigravity-cli/...` followed by empty output or a bogus "authentication failed".
 
+## 2c. GitHub Copilot (VS Code) — install / upgrade
+
+Copilot has no marketplace or plugin mechanism: skills are plain directories it reads off disk. So the install is a script that copies them out of a checkout of this repo.
+
+**The checkout is permanent, not scratch space.** The copied skills point back at it by absolute path, so it must live somewhere the user keeps — `~/src/agy-staff`, not `/tmp`. If the user already has a checkout, use it and say which one. Otherwise clone, asking the user where if you are unsure:
+
+```bash
+git clone https://github.com/keli-wen/agy-staff.git ~/src/agy-staff
+cd ~/src/agy-staff
+./scripts/install-copilot.sh             # account-wide: ~/.copilot/skills/
+```
+
+Use `./scripts/install-copilot.sh --project` instead to install into the current project's `.github/skills/` — offer that when the user wants the skills committed with a specific repo rather than available everywhere. On Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\install-copilot.ps1` (same options, spelled `-Project`). Add `--dry-run` first if you want to show the user what would be written.
+
+The script checks `agy --version` and `node --version` itself and exits non-zero with the reason if either is missing — relay that instead of working around it. It copies `skills/*` and rewrites the copies only, never the sources: the companion path becomes absolute (the in-repo relative path breaks as soon as a skill is copied out), and each skill is namespaced, so **the commands are `/agy-ask`, `/agy-staffer`, `/agy-researcher`, `/agy-reviewer`, `/agy-implementer`** — hyphen, not the `/agy:…` colon form used in Claude Code. Re-running the script overwrites the installed copies, so it is safe to repeat.
+
+Upgrading is manual and is the same script: `git pull` in the checkout, then re-run it. There is no `plugin update` equivalent, and nothing updates on its own.
+
+Two things you cannot do yourself — tell the user to do them, and do not report success as if they were done:
+
+1. **Restart VS Code** so the new skill directories are picked up.
+2. **Switch Copilot Chat to Agent mode.** Skills do not load in Ask or Edit mode; the mode picker is in the Chat input.
+
+> [!IMPORTANT]
+> Copilot asks the user to approve every terminal command. A background job therefore costs at least two approvals — one to start it, one for the `wait` that collects the result — and an unattended job will simply sit there until the user approves. Say this up front; it is the main day-to-day difference from the other two harnesses. Only `ask` is a single foreground call.
+
+Where later sections say `<plugin-root>`, for Copilot that is the checkout itself (`~/src/agy-staff`).
+
 ## 3. Smoke test
 
 Run the zero-setup ask mode — it needs no allowlist and answers in ~3 seconds:
 
 - Claude Code: `/agy:ask "reply with OK"` — **after the restart**, otherwise you are testing the old copy or nothing at all
 - Codex: `$agy:ask reply with OK`
+- Copilot: `/agy-ask reply with OK` — after the VS Code restart, in **Agent** mode
 
 If you cannot restart the session, call the companion of the freshly installed copy directly from the shell. It is the same code path the skill takes, so a pass here means the install is sound:
 
@@ -72,6 +102,8 @@ If you cannot restart the session, call the companion of the freshly installed c
 AGY_ROOT=$(node -p 'require(process.env.HOME+"/.claude/plugins/installed_plugins.json").plugins["agy@agy-staff"][0].installPath')
 node "$AGY_ROOT/companion/agy-companion.mjs" ask "reply with OK"
 ```
+
+For Copilot there is no cache directory to resolve — the installed copies point at the checkout, so run the companion straight out of it: `node ~/src/agy-staff/companion/agy-companion.mjs ask "reply with OK"`. Do this **before** handing the user back to Chat: it separates an agy or auth failure from a Copilot one.
 
 Resolve the root that way rather than globbing `cache/agy-staff/agy/*/`: superseded version directories are left behind after an upgrade, so the glob expands to several paths and the command fails with `unknown subcommand`. `installPath` is always the copy in use. (Codex's equivalent root is printed by `codex plugin list`.) A fallback pass still leaves the restart outstanding — report it as "installed and verified, restart Claude Code to use it".
 
@@ -111,4 +143,4 @@ Per-repo state lives in `<repo>/.agy-staff/`; the companion git-ignores it autom
 
 ## 6. Report back
 
-Tell the user, in **their** language: whether install succeeded (name the version and whether it came from the GitHub slug or a local checkout), the smoke-test result, whether a restart is still needed before the skills load, and whether the optional setup allowlist was applied, declined, or never offered (the default unrestricted profile does not need it).
+Tell the user, in **their** language: whether install succeeded (name the version and whether it came from the GitHub slug or a local checkout), the smoke-test result, whether a restart is still needed before the skills load (for Copilot, also that they must switch Chat to Agent mode, and that the commands are `/agy-ask` and friends), and whether the optional setup allowlist was applied, declined, or never offered (the default unrestricted profile does not need it).
